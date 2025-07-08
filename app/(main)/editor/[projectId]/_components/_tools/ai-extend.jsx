@@ -3,14 +3,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import {
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Loader2,
-  Wand2,
-} from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Wand2 } from "lucide-react";
 import { useCanvas } from "@/context/context";
 import { FabricImage } from "fabric";
 import { useConvexMutation } from "@/hooks/use-convex-query";
@@ -23,139 +16,99 @@ const DIRECTIONS = [
   { key: "right", label: "Right", icon: ArrowRight },
 ];
 
+const FOCUS_MAP = {
+  left: "fo-right",
+  right: "fo-left",
+  top: "fo-bottom",
+  bottom: "fo-top",
+};
+
 export function AIExtenderControls({ project }) {
-  const { canvasEditor, processingMessage, setProcessingMessage } = useCanvas();
-  const [selectedDirections, setSelectedDirections] = useState([]);
+  const { canvasEditor, setProcessingMessage } = useCanvas();
+  const [selectedDirection, setSelectedDirection] = useState(null);
   const [extensionAmount, setExtensionAmount] = useState(200);
   const { mutate: updateProject } = useConvexMutation(
     api.projects.updateProject
   );
 
-  const getMainImage = () => {
-    if (!canvasEditor) return null;
-    return (
-      canvasEditor.getObjects().find((obj) => obj.type === "image") || null
-    );
-  };
+  const getMainImage = () =>
+    canvasEditor?.getObjects().find((obj) => obj.type === "image") || null;
+
+  const getImageSrc = (image) =>
+    image?.getSrc?.() || image?._element?.src || image?.src;
 
   const hasBackgroundRemoval = () => {
-    const mainImage = getMainImage();
-    if (!mainImage) return false;
-
-    // Check the actual image src in the canvas (this is the current processed URL)
-    const imageSrc =
-      mainImage.getSrc?.() || mainImage._element?.src || mainImage.src;
-    if (!imageSrc) return false;
-
-    // Check for background removal parameters in the current image URL
+    const imageSrc = getImageSrc(getMainImage());
     return (
-      imageSrc.includes("e-bgremove") ||
-      imageSrc.includes("e-removedotbg") ||
-      imageSrc.includes("e-changebg")
+      imageSrc?.includes("e-bgremove") ||
+      imageSrc?.includes("e-removedotbg") ||
+      imageSrc?.includes("e-changebg")
     );
   };
 
-  const calculateNewDimensions = () => {
-    const mainImage = getMainImage();
-    if (!mainImage || !project) return { width: 0, height: 0 };
+  const calculateDimensions = () => {
+    const image = getMainImage();
+    if (!image || !selectedDirection) return { width: 0, height: 0 };
 
-    // Calculate based on the current image size, not canvas size
-    const currentWidth = mainImage.width * (mainImage.scaleX || 1);
-    const currentHeight = mainImage.height * (mainImage.scaleY || 1);
+    const currentWidth = image.width * (image.scaleX || 1);
+    const currentHeight = image.height * (image.scaleY || 1);
 
-    let newWidth = currentWidth;
-    let newHeight = currentHeight;
+    const isHorizontal = ["left", "right"].includes(selectedDirection);
+    const isVertical = ["top", "bottom"].includes(selectedDirection);
 
-    if (
-      selectedDirections.includes("left") ||
-      selectedDirections.includes("right")
-    ) {
-      newWidth += extensionAmount;
-    }
-    if (
-      selectedDirections.includes("top") ||
-      selectedDirections.includes("bottom")
-    ) {
-      newHeight += extensionAmount;
-    }
-
-    return { width: Math.round(newWidth), height: Math.round(newHeight) };
+    return {
+      width: Math.round(currentWidth + (isHorizontal ? extensionAmount : 0)),
+      height: Math.round(currentHeight + (isVertical ? extensionAmount : 0)),
+    };
   };
 
   const buildExtensionUrl = (imageUrl) => {
-    if (!imageUrl || selectedDirections.length === 0) return imageUrl;
+    if (!imageUrl || !selectedDirection) return imageUrl;
 
-    const [baseUrl, existingQuery] = imageUrl.split("?");
-    const { width: newWidth, height: newHeight } = calculateNewDimensions();
+    // Always use the base URL without existing transformations to avoid duplicates
+    const baseUrl = imageUrl.split("?")[0];
+    const { width, height } = calculateDimensions();
 
     const transformations = [
       "bg-genfill",
-      `w-${newWidth}`,
-      `h-${newHeight}`,
+      `w-${width}`,
+      `h-${height}`,
       "cm-pad_resize",
     ];
 
-    // Add focus positioning based on selected directions
-    let focus = "";
-    const hasLeft = selectedDirections.includes("left");
-    const hasTop = selectedDirections.includes("top");
-    const hasRight = selectedDirections.includes("right");
-    const hasBottom = selectedDirections.includes("bottom");
-
-    // When extending left+top, original goes to bottom-right
-    if (hasLeft && hasTop) focus = "fo-bottom_right";
-    // When extending right+top, original goes to bottom-left
-    else if (hasRight && hasTop) focus = "fo-bottom_left";
-    // When extending left+bottom, original goes to top-right
-    else if (hasLeft && hasBottom) focus = "fo-top_right";
-    // When extending right+bottom, original goes to top-left
-    else if (hasRight && hasBottom) focus = "fo-top_left";
-    // When extending left, original goes to right
-    else if (hasLeft) focus = "fo-right";
-    // When extending right, original goes to left
-    else if (hasRight) focus = "fo-left";
-    // When extending top, original goes to bottom
-    else if (hasTop) focus = "fo-bottom";
-    // When extending bottom, original goes to top
-    else if (hasBottom) focus = "fo-top";
-
+    // Add focus positioning
+    const focus = FOCUS_MAP[selectedDirection];
     if (focus) transformations.push(focus);
-
-    if (existingQuery) {
-      const params = new URLSearchParams(existingQuery);
-      const existingTr = params.get("tr");
-      const finalTr = existingTr
-        ? `${existingTr}:${transformations.join(",")}`
-        : transformations.join(",");
-      return `${baseUrl}?tr=${finalTr}`;
-    }
 
     return `${baseUrl}?tr=${transformations.join(",")}`;
   };
 
-  const handleApplyExtension = async () => {
+  const selectDirection = (direction) => {
+    // Toggle selection - if same direction is clicked, deselect it
+    setSelectedDirection((prev) => (prev === direction ? null : direction));
+  };
+
+  const applyExtension = async () => {
     const mainImage = getMainImage();
-    if (!mainImage || !project || selectedDirections.length === 0) return;
+    if (!mainImage || !selectedDirection) return;
 
     setProcessingMessage("Extending image with AI...");
 
     try {
-      // Get the current image URL from the canvas (preserves previous extensions)
-      const currentImageUrl =
-        mainImage.getSrc?.() || mainImage._element?.src || mainImage.src;
+      const currentImageUrl = getImageSrc(mainImage);
       const extendedUrl = buildExtensionUrl(currentImageUrl);
 
-      // Load the extended image
       const extendedImage = await FabricImage.fromURL(extendedUrl, {
         crossOrigin: "anonymous",
       });
 
-      // Calculate scale to fit within the existing canvas
-      const scaleX = Math.min(project.width / extendedImage.width, 1);
-      const scaleY = Math.min(project.height / extendedImage.height, 1);
-      const scale = Math.min(scaleX, scaleY);
+      // Scale to fit canvas
+      const scale = Math.min(
+        project.width / extendedImage.width,
+        project.height / extendedImage.height,
+        1
+      );
 
-      // Position and scale the extended image to fit the canvas
       extendedImage.set({
         left: project.width / 2,
         top: project.height / 2,
@@ -167,20 +120,20 @@ export function AIExtenderControls({ project }) {
         evented: true,
       });
 
-      // Replace the old image with the extended one
+      // Replace image
       canvasEditor.remove(mainImage);
       canvasEditor.add(extendedImage);
       canvasEditor.setActiveObject(extendedImage);
       canvasEditor.requestRenderAll();
 
-      // Update project with new image URL (but keep original canvas dimensions)
+      // Save to database
       await updateProject({
         projectId: project._id,
         currentImageUrl: extendedUrl,
         canvasState: canvasEditor.toJSON(),
       });
 
-      setSelectedDirections([]);
+      setSelectedDirection(null);
     } catch (error) {
       console.error("Error applying extension:", error);
       alert("Failed to extend image. Please try again.");
@@ -189,20 +142,15 @@ export function AIExtenderControls({ project }) {
     }
   };
 
+  // Early returns for error states
   if (!canvasEditor) {
-    return (
-      <div className="p-4">
-        <p className="text-white/70 text-sm">Canvas not ready</p>
-      </div>
-    );
+    return <div className="p-4 text-white/70 text-sm">Canvas not ready</div>;
   }
 
   const mainImage = getMainImage();
   if (!mainImage) {
     return (
-      <div className="p-4">
-        <p className="text-white/70 text-sm">Please add an image first</p>
-      </div>
+      <div className="p-4 text-white/70 text-sm">Please add an image first</div>
     );
   }
 
@@ -220,38 +168,33 @@ export function AIExtenderControls({ project }) {
     );
   }
 
-  const { width: newWidth, height: newHeight } = calculateNewDimensions();
+  const { width: newWidth, height: newHeight } = calculateDimensions();
+  const currentImage = getMainImage();
 
   return (
     <div className="space-y-6">
       {/* Direction Selection */}
       <div>
         <h3 className="text-sm font-medium text-white mb-3">
-          Extend Directions
+          Select Extension Direction
         </h3>
+        <p className="text-xs text-white/70 mb-3">
+          Choose one direction to extend your image
+        </p>
         <div className="grid grid-cols-2 gap-3">
-          {DIRECTIONS.map((config) => {
-            const Icon = config.icon;
-            const isSelected = selectedDirections.includes(config.key);
-
-            return (
-              <Button
-                key={config.key}
-                onClick={() =>
-                  setSelectedDirections((prev) =>
-                    prev.includes(config.key)
-                      ? prev.filter((d) => d !== config.key)
-                      : [...prev, config.key]
-                  )
-                }
-                variant={isSelected ? "default" : "outline"}
-                className={`flex items-center gap-2 ${isSelected ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
-              >
-                <Icon className="h-4 w-4" />
-                {config.label}
-              </Button>
-            );
-          })}
+          {DIRECTIONS.map(({ key, label, icon: Icon }) => (
+            <Button
+              key={key}
+              onClick={() => selectDirection(key)}
+              variant={selectedDirection === key ? "default" : "outline"}
+              className={`flex items-center gap-2 ${
+                selectedDirection === key ? "bg-cyan-500 hover:bg-cyan-600" : ""
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -263,37 +206,36 @@ export function AIExtenderControls({ project }) {
         </div>
         <Slider
           value={[extensionAmount]}
-          onValueChange={(value) => setExtensionAmount(value[0])}
+          onValueChange={([value]) => setExtensionAmount(value)}
           min={50}
           max={500}
           step={25}
           className="w-full"
+          disabled={!selectedDirection}
         />
       </div>
 
       {/* Dimensions Preview */}
-      {selectedDirections.length > 0 && (
+      {selectedDirection && (
         <div className="bg-slate-700/30 rounded-lg p-3">
           <h4 className="text-sm font-medium text-white mb-2">
-            Image Extension Preview
+            Extension Preview
           </h4>
-          <div className="text-xs text-white/70">
+          <div className="text-xs text-white/70 space-y-1">
             <div>
-              Current Image:{" "}
-              {Math.round(
-                getMainImage()?.width * (getMainImage()?.scaleX || 1)
-              )}{" "}
-              ×{" "}
-              {Math.round(
-                getMainImage()?.height * (getMainImage()?.scaleY || 1)
-              )}
-              px
+              Current:{" "}
+              {Math.round(currentImage.width * (currentImage.scaleX || 1))} ×{" "}
+              {Math.round(currentImage.height * (currentImage.scaleY || 1))}px
             </div>
             <div className="text-cyan-400">
-              Extended Image: {newWidth} × {newHeight}px
+              Extended: {newWidth} × {newHeight}px
             </div>
-            <div className="mt-1 text-white/50">
-              Canvas size unchanged: {project.width} × {project.height}px
+            <div className="text-white/50">
+              Canvas: {project.width} × {project.height}px (unchanged)
+            </div>
+            <div className="text-cyan-300">
+              Direction:{" "}
+              {DIRECTIONS.find((d) => d.key === selectedDirection)?.label}
             </div>
           </div>
         </div>
@@ -301,8 +243,8 @@ export function AIExtenderControls({ project }) {
 
       {/* Apply Button */}
       <Button
-        onClick={handleApplyExtension}
-        disabled={selectedDirections.length === 0 || processingMessage}
+        onClick={applyExtension}
+        disabled={!selectedDirection}
         className="w-full"
         variant="primary"
       >
@@ -313,11 +255,9 @@ export function AIExtenderControls({ project }) {
       {/* Instructions */}
       <div className="bg-slate-700/30 rounded-lg p-3">
         <p className="text-xs text-white/70">
-          <strong>How it works:</strong>
-          <br />
-          Select directions → Set amount → Apply extension.
-          <br />
-          AI will intelligently fill the new areas.
+          <strong>How it works:</strong> Select one direction → Set amount →
+          Apply extension. AI will intelligently fill the new area in that
+          direction.
         </p>
       </div>
     </div>

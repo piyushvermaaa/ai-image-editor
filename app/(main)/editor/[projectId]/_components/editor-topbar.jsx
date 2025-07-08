@@ -1,4 +1,3 @@
-// components/editor/editor-topbar.jsx
 "use client";
 
 import React, { useState } from "react";
@@ -19,6 +18,7 @@ import {
   Save,
   Download,
   FileImage,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
 import { useCanvas } from "@/context/context";
+import { usePlanAccess } from "@/hooks/use-plan-access";
+import { UpgradeModal } from "@/components/upgrade-modal";
 import { FabricImage } from "fabric";
 import { api } from "@/convex/_generated/api";
 import { useConvexMutation, useConvexQuery } from "@/hooks/use-convex-query";
@@ -40,7 +42,7 @@ const TOOLS = [
     id: "resize",
     label: "Resize",
     icon: Expand,
-    isActive: true, // Default active
+    isActive: true,
   },
   {
     id: "crop",
@@ -61,16 +63,19 @@ const TOOLS = [
     id: "background",
     label: "AI Background",
     icon: Palette,
+    proOnly: true,
   },
   {
     id: "ai_extender",
     label: "AI Image Extender",
     icon: Maximize2,
+    proOnly: true,
   },
   {
     id: "ai_edit",
     label: "AI Editing",
     icon: Eye,
+    proOnly: true,
   },
 ];
 
@@ -103,21 +108,32 @@ const EXPORT_FORMATS = [
 
 export function EditorTopBar({ project }) {
   const router = useRouter();
-  const [isResetting, setIsResetting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [restrictedTool, setRestrictedTool] = useState(null);
 
   const { activeTool, onToolChange, canvasEditor } = useCanvas();
-  const { mutate: updateProject } = useConvexMutation(
+  const { hasAccess, canExport, isFree } = usePlanAccess();
+
+  // Use the loading states from the hooks
+  const { mutate: updateProject, isLoading: isSaving } = useConvexMutation(
     api.projects.updateProject
   );
-
-  // Get current user for export limits
   const { data: user } = useConvexQuery(api.users.getCurrentUser);
 
   const handleBackToDashboard = () => {
     router.push("/dashboard");
+  };
+
+  // Handle tool change with access control
+  const handleToolChange = (toolId) => {
+    if (!hasAccess(toolId)) {
+      setRestrictedTool(toolId);
+      setShowUpgradeModal(true);
+      return;
+    }
+    onToolChange(toolId);
   };
 
   // Manual save functionality
@@ -127,24 +143,16 @@ export function EditorTopBar({ project }) {
       return;
     }
 
-    setIsSaving(true);
-
     try {
-      // Get current canvas state
       const canvasJSON = canvasEditor.toJSON();
-
-      // Update project in database
       await updateProject({
         projectId: project._id,
         canvasState: canvasJSON,
       });
-
       toast.success("Project saved successfully!");
     } catch (error) {
       console.error("Error saving project:", error);
       toast.error("Failed to save project. Please try again.");
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -156,10 +164,9 @@ export function EditorTopBar({ project }) {
     }
 
     // Check export limits for free users
-    if (user?.plan === "free" && user?.exportsThisMonth >= 5) {
-      toast.error(
-        "Free plan limited to 5 exports per month. Upgrade to Pro for unlimited exports."
-      );
+    if (!canExport(user?.exportsThisMonth || 0)) {
+      setRestrictedTool("export");
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -167,28 +174,24 @@ export function EditorTopBar({ project }) {
     setExportFormat(exportConfig.format);
 
     try {
-      // Temporarily set canvas to actual project dimensions for export
+      // Store current canvas state for restoration
       const currentZoom = canvasEditor.getZoom();
       const currentViewportTransform = [...canvasEditor.viewportTransform];
 
       // Reset zoom and viewport for accurate export
       canvasEditor.setZoom(1);
       canvasEditor.setViewportTransform([1, 0, 0, 1, 0, 0]);
-
-      // Set canvas to actual project dimensions
       canvasEditor.setDimensions({
         width: project.width,
         height: project.height,
       });
-
-      // Render the canvas at full resolution
       canvasEditor.requestRenderAll();
 
       // Export the canvas
       const dataURL = canvasEditor.toDataURL({
         format: exportConfig.format.toLowerCase(),
         quality: exportConfig.quality,
-        multiplier: 1, // Export at original resolution
+        multiplier: 1,
       });
 
       // Restore original canvas state
@@ -208,15 +211,6 @@ export function EditorTopBar({ project }) {
       link.click();
       document.body.removeChild(link);
 
-      // Update export count in database (only for successful exports)
-      if (user?.plan === "free") {
-        await updateProject({
-          projectId: project._id,
-          // Note: We would need to add this to the users mutation
-          // For now, we'll track it in a separate call or extend the schema
-        });
-      }
-
       toast.success(`Image exported as ${exportConfig.format}!`);
     } catch (error) {
       console.error("Error exporting image:", error);
@@ -234,62 +228,49 @@ export function EditorTopBar({ project }) {
       return;
     }
 
-    setIsResetting(true);
-
     try {
-      // Clear the canvas completely
+      // Clear canvas and reset state
       canvasEditor.clear();
-
-      // Reset canvas background
       canvasEditor.backgroundColor = "#ffffff";
       canvasEditor.backgroundImage = null;
 
-      // Load the original image
+      // Load original image
       const fabricImage = await FabricImage.fromURL(project.originalImageUrl, {
         crossOrigin: "anonymous",
       });
 
-      // Calculate scaling to fit the image properly
+      // Calculate proper scaling
       const imgAspectRatio = fabricImage.width / fabricImage.height;
       const canvasAspectRatio = project.width / project.height;
-      let scaleX, scaleY;
+      const scale =
+        imgAspectRatio > canvasAspectRatio
+          ? project.width / fabricImage.width
+          : project.height / fabricImage.height;
 
-      if (imgAspectRatio > canvasAspectRatio) {
-        scaleX = project.width / fabricImage.width;
-        scaleY = scaleX;
-      } else {
-        scaleY = project.height / fabricImage.height;
-        scaleX = scaleY;
-      }
-
-      // Position and scale the image
       fabricImage.set({
         left: project.width / 2,
         top: project.height / 2,
         originX: "center",
         originY: "center",
-        scaleX,
-        scaleY,
+        scaleX: scale,
+        scaleY: scale,
         selectable: true,
         evented: true,
       });
 
-      // Remove any filters that might be applied
       fabricImage.filters = [];
-
-      // Add the image to canvas
       canvasEditor.add(fabricImage);
       canvasEditor.centerObject(fabricImage);
       canvasEditor.setActiveObject(fabricImage);
       canvasEditor.requestRenderAll();
 
-      // Save the reset state to database
+      // Save the reset state
       const canvasJSON = canvasEditor.toJSON();
       await updateProject({
         projectId: project._id,
         canvasState: canvasJSON,
-        currentImageUrl: project.originalImageUrl, // Reset to original URL
-        activeTransformations: undefined, // Clear any ImageKit transformations
+        currentImageUrl: project.originalImageUrl,
+        activeTransformations: undefined,
         backgroundRemoved: false,
       });
 
@@ -297,183 +278,203 @@ export function EditorTopBar({ project }) {
     } catch (error) {
       console.error("Error resetting canvas:", error);
       toast.error("Failed to reset canvas. Please try again.");
-    } finally {
-      setIsResetting(false);
     }
   };
 
   return (
-    <div className="border-b px-6 py-3">
-      {/* Header Row */}
-      <div className="flex items-center justify-between mb-4">
-        {/* Left: Back button and project name */}
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleBackToDashboard}
-            className="text-white hover:text-gray-300"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            All Projects
-          </Button>
-        </div>
-
-        <h1 className="font-extrabold capitalize">{project.title}</h1>
-
-        {/* Right: Actions */}
-        <div className="flex items-center gap-3">
-          {/* Reset Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleResetToOriginal}
-            disabled={isResetting || !project.originalImageUrl}
-            className="gap-2"
-          >
-            {isResetting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Resetting...
-              </>
-            ) : (
-              <>
-                <RefreshCcw className="h-4 w-4" />
-                Reset to Original
-              </>
-            )}
-          </Button>
-
-          {/* Manual Save Button */}
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleManualSave}
-            disabled={isSaving || !canvasEditor}
-            className="gap-2"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                Save
-              </>
-            )}
-          </Button>
-
-          {/* Export Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="glass"
-                size="sm"
-                disabled={isExporting || !canvasEditor}
-                className="gap-2"
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Exporting {exportFormat}...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    Export
-                    <ChevronDown className="h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent
-              align="end"
-              className="w-56 bg-slate-800 border-slate-700"
+    <>
+      <div className="border-b px-6 py-3">
+        {/* Header Row */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Left: Back button and project name */}
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBackToDashboard}
+              className="text-white hover:text-gray-300"
             >
-              <div className="px-3 py-2 text-sm text-white/70">
-                Export Resolution: {project.width} × {project.height}px
-              </div>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              All Projects
+            </Button>
+          </div>
 
-              <DropdownMenuSeparator className="bg-slate-700" />
+          <h1 className="font-extrabold capitalize">{project.title}</h1>
 
-              {EXPORT_FORMATS.map((config, index) => (
-                <DropdownMenuItem
-                  key={index}
-                  onClick={() => handleExport(config)}
-                  className="text-white hover:bg-slate-700 cursor-pointer flex items-center gap-2"
-                >
-                  <FileImage className="h-4 w-4" />
-                  <div className="flex-1">
-                    <div className="font-medium">{config.label}</div>
-                    <div className="text-xs text-white/50">
-                      {config.format} • {Math.round(config.quality * 100)}%
-                      quality
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-              ))}
-
-              <DropdownMenuSeparator className="bg-slate-700" />
-
-              {/* Export Limit Info for Free Users */}
-              {user?.plan === "free" && (
-                <div className="px-3 py-2 text-xs text-white/50">
-                  Free Plan: {user?.exportsThisMonth || 0}/5 exports this month
-                  {user?.exportsThisMonth >= 5 && (
-                    <div className="text-amber-400 mt-1">
-                      Upgrade to Pro for unlimited exports
-                    </div>
-                  )}
-                </div>
+          {/* Right: Actions */}
+          <div className="flex items-center gap-3">
+            {/* Reset Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetToOriginal}
+              disabled={isSaving || !project.originalImageUrl}
+              className="gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <RefreshCcw className="h-4 w-4" />
+                  Reset
+                </>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+            </Button>
 
-      {/* Tools Row */}
-      <div className="flex items-center justify-between">
-        {/* Tools */}
-        <div className="flex items-center gap-2">
-          {TOOLS.map((tool) => {
-            const Icon = tool.icon;
-            const isActive = activeTool === tool.id;
+            {/* Manual Save Button */}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleManualSave}
+              disabled={isSaving || !canvasEditor}
+              className="gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Save
+                </>
+              )}
+            </Button>
 
-            return (
-              <Button
-                key={tool.id}
-                variant={isActive ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onToolChange(tool.id)}
-                className={`gap-2 ${
-                  isActive
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "text-white hover:text-gray-300 hover:bg-gray-100"
-                }`}
+            {/* Export Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="glass"
+                  size="sm"
+                  disabled={isExporting || !canvasEditor}
+                  className="gap-2"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Exporting {exportFormat}...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      Export
+                      <ChevronDown className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent
+                align="end"
+                className="w-56 bg-slate-800 border-slate-700"
               >
-                <Icon className="h-4 w-4" />
-                {tool.label}
-              </Button>
-            );
-          })}
+                <div className="px-3 py-2 text-sm text-white/70">
+                  Export Resolution: {project.width} × {project.height}px
+                </div>
+
+                <DropdownMenuSeparator className="bg-slate-700" />
+
+                {EXPORT_FORMATS.map((config, index) => (
+                  <DropdownMenuItem
+                    key={index}
+                    onClick={() => handleExport(config)}
+                    className="text-white hover:bg-slate-700 cursor-pointer flex items-center gap-2"
+                  >
+                    <FileImage className="h-4 w-4" />
+                    <div className="flex-1">
+                      <div className="font-medium">{config.label}</div>
+                      <div className="text-xs text-white/50">
+                        {config.format} • {Math.round(config.quality * 100)}%
+                        quality
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+
+                <DropdownMenuSeparator className="bg-slate-700" />
+
+                {/* Export Limit Info for Free Users */}
+                {isFree && (
+                  <div className="px-3 py-2 text-xs text-white/50">
+                    Free Plan: {user?.exportsThisMonth || 0}/20 exports this
+                    month
+                    {(user?.exportsThisMonth || 0) >= 20 && (
+                      <div className="text-amber-400 mt-1">
+                        Upgrade to Pro for unlimited exports
+                      </div>
+                    )}
+                  </div>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
-        {/* Right side controls */}
-        <div className="flex items-center gap-4">
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="text-white">
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="text-white">
-              <RotateCw className="h-4 w-4" />
-            </Button>
+        {/* Tools Row */}
+        <div className="flex items-center justify-between">
+          {/* Tools */}
+          <div className="flex items-center gap-2">
+            {TOOLS.map((tool) => {
+              const Icon = tool.icon;
+              const isActive = activeTool === tool.id;
+              const hasToolAccess = hasAccess(tool.id);
+
+              return (
+                <Button
+                  key={tool.id}
+                  variant={isActive ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => handleToolChange(tool.id)}
+                  className={`gap-2 relative ${
+                    isActive
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "text-white hover:text-gray-300 hover:bg-gray-100"
+                  } ${!hasToolAccess ? "opacity-60" : ""}`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tool.label}
+                  {tool.proOnly && !hasToolAccess && (
+                    <Lock className="h-3 w-3 text-amber-400" />
+                  )}
+                </Button>
+              );
+            })}
+          </div>
+
+          {/* Right side controls */}
+          <div className="flex items-center gap-4">
+            {/* Undo/Redo */}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" className="text-white">
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-white">
+                <RotateCw className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => {
+          setShowUpgradeModal(false);
+          setRestrictedTool(null);
+        }}
+        restrictedTool={restrictedTool}
+        reason={
+          restrictedTool === "export"
+            ? "Free plan is limited to 20 exports per month. Upgrade to Pro for unlimited exports."
+            : undefined
+        }
+      />
+    </>
   );
 }

@@ -10,7 +10,6 @@ import {
   Mountain,
   CheckCircle,
   AlertTriangle,
-  Eye,
   Camera,
 } from "lucide-react";
 import { useCanvas } from "@/context/context";
@@ -48,71 +47,62 @@ const RETOUCH_PRESETS = [
     label: "Premium Quality",
     description: "AI retouch + upscale + enhancements",
     icon: Camera,
-    transform: "e-retouch:e-upscale,e-contrast,e-sharpen",
+    transform: "e-retouch,e-upscale,e-contrast,e-sharpen",
     recommended: false,
   },
 ];
 
 export function AIEdit({ project }) {
-  const { canvasEditor, processingMessage, setProcessingMessage } = useCanvas();
-  const [selectedPreset, setSelectedPreset] = useState("auto_enhance");
+  const { canvasEditor, setProcessingMessage } = useCanvas();
+  const [selectedPreset, setSelectedPreset] = useState("ai_retouch"); // Fixed default
   const { mutate: updateProject } = useConvexMutation(
     api.projects.updateProject
   );
 
-  const getMainImage = () => {
-    if (!canvasEditor) return null;
-    const objects = canvasEditor.getObjects();
-    return objects.find((obj) => obj.type === "image") || null;
-  };
+  const getMainImage = () =>
+    canvasEditor?.getObjects().find((obj) => obj.type === "image") || null;
 
   const buildRetouchUrl = (imageUrl, presetKey) => {
-    if (!imageUrl) return imageUrl;
-
     const preset = RETOUCH_PRESETS.find((p) => p.key === presetKey);
-    if (!preset) return imageUrl;
+    if (!imageUrl || !preset) return imageUrl;
 
     const [baseUrl, existingQuery] = imageUrl.split("?");
 
     if (existingQuery) {
       const params = new URLSearchParams(existingQuery);
       const existingTr = params.get("tr");
-      const finalTr = existingTr
-        ? `${existingTr}:${preset.transform}`
-        : preset.transform;
-      return `${baseUrl}?tr=${finalTr}`;
+
+      if (existingTr) {
+        // Append retouch to existing transformations
+        return `${baseUrl}?tr=${existingTr},${preset.transform}`;
+      }
     }
 
+    // No existing transformations, create new
     return `${baseUrl}?tr=${preset.transform}`;
   };
 
-  const handleApplyRetouch = async () => {
+  const applyRetouch = async () => {
     const mainImage = getMainImage();
-    if (!mainImage || !project) return;
-
     const selectedPresetData = RETOUCH_PRESETS.find(
       (p) => p.key === selectedPreset
     );
-    if (!selectedPresetData) return;
+
+    if (!mainImage || !project || !selectedPresetData) return;
 
     setProcessingMessage(`Enhancing image with ${selectedPresetData.label}...`);
 
     try {
-      // Get current image URL from canvas
       const currentImageUrl =
         mainImage.getSrc?.() || mainImage._element?.src || mainImage.src;
       const retouchedUrl = buildRetouchUrl(currentImageUrl, selectedPreset);
 
-      console.log("Retouching from:", currentImageUrl);
-      console.log("Retouching to:", retouchedUrl);
-
-      // Load the retouched image
       const retouchedImage = await FabricImage.fromURL(retouchedUrl, {
         crossOrigin: "anonymous",
       });
 
-      // Store the current positioning and properties
-      const currentProps = {
+      // Preserve current image properties
+      const imageProps = {
         left: mainImage.left,
         top: mainImage.top,
         originX: mainImage.originX,
@@ -124,28 +114,21 @@ export function AIEdit({ project }) {
         evented: true,
       };
 
-      // Replace the old image with the retouched one
+      // Replace image
       canvasEditor.remove(mainImage);
-      retouchedImage.set(currentProps);
+      retouchedImage.set(imageProps);
       canvasEditor.add(retouchedImage);
-
-      // Update coordinates and render
       retouchedImage.setCoords();
       canvasEditor.setActiveObject(retouchedImage);
       canvasEditor.requestRenderAll();
 
-      // Update project in database
+      // Update project
       await updateProject({
         projectId: project._id,
         currentImageUrl: retouchedUrl,
         canvasState: canvasEditor.toJSON(),
-        // Store the retouch preset used for tracking
-        activeTransformations: retouchedUrl.split("?tr=")[1] || null,
+        activeTransformations: selectedPresetData.transform,
       });
-
-      console.log(
-        `Image successfully retouched with ${selectedPresetData.label}`
-      );
     } catch (error) {
       console.error("Error retouching image:", error);
       alert("Failed to retouch image. Please try again.");
@@ -154,29 +137,22 @@ export function AIEdit({ project }) {
     }
   };
 
+  // Early returns
   if (!canvasEditor) {
-    return (
-      <div className="p-4">
-        <p className="text-white/70 text-sm">Canvas not ready</p>
-      </div>
-    );
+    return <div className="p-4 text-white/70 text-sm">Canvas not ready</div>;
   }
 
   const mainImage = getMainImage();
   if (!mainImage) {
     return (
-      <div className="p-4 space-y-4">
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h3 className="text-amber-400 font-medium mb-1">
-                No Image Found
-              </h3>
-              <p className="text-amber-300/80 text-sm">
-                Please add an image to the canvas first to use AI retouching.
-              </p>
-            </div>
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="text-amber-400 font-medium mb-1">No Image Found</h3>
+            <p className="text-amber-300/80 text-sm">
+              Please add an image to the canvas first to use AI retouching.
+            </p>
           </div>
         </div>
       </div>
@@ -184,12 +160,14 @@ export function AIEdit({ project }) {
   }
 
   const hasActiveTransformations =
-    project.activeTransformations &&
-    project.activeTransformations.includes("e-retouch");
+    project.activeTransformations?.includes("e-retouch");
+  const selectedPresetData = RETOUCH_PRESETS.find(
+    (p) => p.key === selectedPreset
+  );
 
   return (
     <div className="space-y-6">
-      {/* Current Status */}
+      {/* Status Indicator */}
       {hasActiveTransformations && (
         <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
           <div className="flex items-start gap-3">
@@ -206,7 +184,7 @@ export function AIEdit({ project }) {
         </div>
       )}
 
-      {/* Retouch Presets */}
+      {/* Preset Selection */}
       <div>
         <h3 className="text-sm font-medium text-white mb-3">
           Choose Enhancement Style
@@ -241,7 +219,6 @@ export function AIEdit({ project }) {
                   <p className="text-white/70 text-xs">{preset.description}</p>
                 </div>
 
-                {/* Selection indicator */}
                 {isSelected && (
                   <div className="absolute top-2 right-2">
                     <div className="w-3 h-3 bg-cyan-400 rounded-full"></div>
@@ -254,14 +231,9 @@ export function AIEdit({ project }) {
       </div>
 
       {/* Apply Button */}
-      <Button
-        onClick={handleApplyRetouch}
-        disabled={processingMessage}
-        className="w-full"
-        variant="primary"
-      >
+      <Button onClick={applyRetouch} className="w-full" variant="primary">
         <Wand2 className="h-4 w-4 mr-2" />
-        Apply {RETOUCH_PRESETS.find((p) => p.key === selectedPreset)?.label}
+        Apply {selectedPresetData?.label}
       </Button>
 
       {/* Information */}
@@ -272,16 +244,16 @@ export function AIEdit({ project }) {
         </h4>
         <div className="space-y-2 text-xs text-white/70">
           <p>
-            • <strong>Auto Enhance:</strong> AI analyzes your image and applies
-            optimal improvements
+            • <strong>AI Retouch:</strong> AI analyzes and applies optimal
+            improvements
           </p>
           <p>
-            • <strong>Smart Processing:</strong> Preserves important details
-            while enhancing quality
+            • <strong>Smart Processing:</strong> Preserves details while
+            enhancing quality
           </p>
           <p>
-            • <strong>Multiple Styles:</strong> Choose the enhancement that fits
-            your image type
+            • <strong>Multiple Styles:</strong> Choose enhancement that fits
+            your image
           </p>
           <p>
             • <strong>Instant Results:</strong> See improvements in seconds

@@ -6,11 +6,12 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { shadesOfPurple } from "@clerk/themes";
 import { ThemeProvider } from "@/components/theme-provider";
 import { FloatingShapes } from "@/components/floating-shapes";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "AI Image Editor",
+  title: "Pixxel",
   description: "",
 };
 
@@ -37,7 +38,7 @@ export default function RootLayout({ children }) {
               <Header />
               <main className="bg-slate-900 min-h-screen text-white overflow-x-hidden">
                 <FloatingShapes />
-                {/* <Toaster richColors /> */}
+                <Toaster richColors />
 
                 {children}
               </main>

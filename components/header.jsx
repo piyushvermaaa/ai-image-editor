@@ -8,6 +8,7 @@ import { useStoreUser } from "@/hooks/use-store-user";
 import { BarLoader } from "react-spinners";
 import { Authenticated, Unauthenticated } from "convex/react";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 
 export default function Header() {
   const { isLoading } = useStoreUser();
@@ -23,9 +24,14 @@ export default function Header() {
 
       <div className="backdrop-blur-md bg-white/10 border border-white/20 rounded-full px-8 py-3 flex items-center justify-between gap-8">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 mr-10 md:mr-20">
-          <Sparkles className="h-6 w-6 text-white" />
-          <div className="text-lg font-bold text-white ">AI Editor</div>
+        <Link href="/" className="mr-10 md:mr-20">
+          <Image
+            src="/pixxel-logo.png"
+            alt="Pixxel Logo"
+            className="min-w-24 object-cover"
+            width={96}
+            height={24}
+          />
         </Link>
 
         {path === "/" && (

@@ -1,15 +1,32 @@
 import { Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
+import { useConvexMutation } from "@/hooks/use-convex-query";
+import { api } from "@/convex/_generated/api";
 
 export default function ProjectCard({ project, onEdit }) {
+  const { mutate: deleteProject, isLoading } = useConvexMutation(
+    api.projects.deleteProject
+  );
+
   const lastUpdated = formatDistanceToNow(new Date(project.updatedAt), {
     addSuffix: true,
   });
 
-  const handleDelete = () => {
-    // TODO: Implement delete functionality with confirmation
-    console.log("Delete project:", project._id);
+  const handleDelete = async () => {
+    const confirmed = confirm(
+      `Are you sure you want to delete "${project.title}"? This action cannot be undone.`
+    );
+
+    if (confirmed) {
+      try {
+        await deleteProject({ projectId: project._id });
+        toast.success("Project deleted successfully");
+      } catch (error) {
+        console.error("Error deleting project:", error);
+        toast.error("Failed to delete project. Please try again.");
+      }
+    }
   };
 
   return (
@@ -38,7 +55,8 @@ export default function ProjectCard({ project, onEdit }) {
             variant="glass"
             size="sm"
             onClick={handleDelete}
-            className="gap-2 text-red-400"
+            className="gap-2 text-red-400 hover:text-red-300"
+            disabled={isLoading}
           >
             <Trash2 className="h-4 w-4" />
             Delete
