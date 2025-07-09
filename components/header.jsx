@@ -62,10 +62,10 @@ export default function Header() {
         <div className="flex items-center gap-3 ml-10 md:ml-20">
           <Authenticated>
             <Link href="/dashboard">
-              <div className="md:inline-flex items-center gap-2 backdrop-blur-lg bg-white/10 text-white border border-white/20 hover:bg-white/20 px-3 py-2 rounded-lg transition-all duration-300 cursor-pointer font-medium text-sm">
+              <Button variant="glass" className="hidden sm:flex">
                 <LayoutDashboard className="h-4 w-4" />
                 <span className="hidden md:flex">Dashboard</span>
-              </div>
+              </Button>
             </Link>
 
             <UserButton
