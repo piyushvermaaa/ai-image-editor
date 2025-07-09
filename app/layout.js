@@ -12,14 +12,14 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: "Pixxel",
-  description: "",
+  description: "Professional image editing powered by AI",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* <link rel="icon" href="/logos/logo-s.png" sizes="any" /> */}
+        <link rel="icon" href="/logo-text.png" sizes="any" />
       </head>
       <body className={`${inter.className}`}>
         <ThemeProvider

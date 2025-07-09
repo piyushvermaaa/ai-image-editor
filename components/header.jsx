@@ -9,6 +9,7 @@ import { BarLoader } from "react-spinners";
 import { Authenticated, Unauthenticated } from "convex/react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
+import { Button } from "./ui/button";
 
 export default function Header() {
   const { isLoading } = useStoreUser();
@@ -82,15 +83,13 @@ export default function Header() {
 
           <Unauthenticated>
             <SignInButton>
-              <div className="backdrop-blur-lg bg-white/10 text-white border border-white/20 hover:bg-white/20 px-3 py-2 rounded-lg transition-all duration-300 cursor-pointer font-medium text-sm">
+              <Button variant="glass" className="hidden sm:flex">
                 Sign In
-              </div>
+              </Button>
             </SignInButton>
 
             <SignUpButton>
-              <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-transparent hover:shadow-lg hover:shadow-blue-500/25 px-4 py-2 rounded-lg transition-all duration-300 cursor-pointer font-medium text-sm">
-                Get Started
-              </div>
+              <Button variant="primary">Get Started</Button>
             </SignUpButton>
           </Unauthenticated>
         </div>
