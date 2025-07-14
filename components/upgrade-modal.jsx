@@ -3,11 +3,17 @@
 import React from "react";
 import { X, Crown, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PricingTable } from "@clerk/nextjs";
 
 export function UpgradeModal({ isOpen, onClose, restrictedTool, reason }) {
-  if (!isOpen) return null;
-
   const getToolName = (toolId) => {
     const toolNames = {
       background: "AI Background Tools",
@@ -18,54 +24,36 @@ export function UpgradeModal({ isOpen, onClose, restrictedTool, reason }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className="relative w-full max-w-4xl mx-4 bg-slate-800 rounded-2xl border border-white/10 shadow-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-4xl bg-slate-800 border-white/10 max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
           <div className="flex items-center gap-3">
             <Crown className="h-6 w-6 text-yellow-500" />
-            <h2 className="text-2xl font-bold text-white">Upgrade to Pro</h2>
+            <DialogTitle className="text-2xl font-bold text-white">
+              Upgrade to Pro
+            </DialogTitle>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-white/70 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="p-6">
+        <div className="space-y-6">
           {/* Restriction Message */}
           {restrictedTool && (
-            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-              <div className="flex items-center gap-3 mb-2">
-                <Zap className="h-5 w-5 text-amber-400" />
-                <h3 className="font-semibold text-amber-400">
+            <Alert className="bg-amber-500/10 border-amber-500/20">
+              <Zap className="h-5 w-5 text-amber-400" />
+              <AlertDescription className="text-amber-300/80">
+                <div className="font-semibold text-amber-400 mb-1">
                   {getToolName(restrictedTool)} - Pro Feature
-                </h3>
-              </div>
-              <p className="text-amber-300/80 text-sm">
+                </div>
                 {reason ||
                   `${getToolName(restrictedTool)} is only available on the Pro plan. Upgrade now to unlock this powerful feature and more.`}
-              </p>
-            </div>
+              </AlertDescription>
+            </Alert>
           )}
 
           <PricingTable />
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-center gap-3 p-6 border-t border-white/10">
+        <DialogFooter className="justify-center">
           <Button
             variant="ghost"
             onClick={onClose}
@@ -73,8 +61,8 @@ export function UpgradeModal({ isOpen, onClose, restrictedTool, reason }) {
           >
             Maybe Later
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

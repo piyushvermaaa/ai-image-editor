@@ -18,25 +18,6 @@ export const getUserProjects = query({
   },
 });
 
-// Get a single project by ID
-export const getProject = query({
-  args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => {
-    const user = await ctx.runQuery(internal.users.getCurrentUser);
-
-    const project = await ctx.db.get(args.projectId);
-    if (!project) {
-      throw new Error("Project not found");
-    }
-
-    if (!user || project.userId !== user._id) {
-      throw new Error("Access denied");
-    }
-
-    return project;
-  },
-});
-
 // Create a new project
 export const create = mutation({
   args: {
@@ -86,6 +67,53 @@ export const create = mutation({
     });
 
     return projectId;
+  },
+});
+
+// Delete a project
+export const deleteProject = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(internal.users.getCurrentUser);
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    if (!user || project.userId !== user._id) {
+      throw new Error("Access denied");
+    }
+
+    // Delete the project
+    await ctx.db.delete(args.projectId);
+
+    // Update user's project count
+    await ctx.db.patch(user._id, {
+      projectsUsed: Math.max(0, user.projectsUsed - 1),
+      lastActiveAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// Get a single project by ID
+export const getProject = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(internal.users.getCurrentUser);
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    if (!user || project.userId !== user._id) {
+      throw new Error("Access denied");
+    }
+
+    return project;
   },
 });
 
@@ -140,33 +168,5 @@ export const updateProject = mutation({
     });
 
     return args.projectId;
-  },
-});
-
-// Delete a project
-export const deleteProject = mutation({
-  args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => {
-    const user = await ctx.runQuery(internal.users.getCurrentUser);
-
-    const project = await ctx.db.get(args.projectId);
-    if (!project) {
-      throw new Error("Project not found");
-    }
-
-    if (!user || project.userId !== user._id) {
-      throw new Error("Access denied");
-    }
-
-    // Delete the project
-    await ctx.db.delete(args.projectId);
-
-    // Update user's project count
-    await ctx.db.patch(user._id, {
-      projectsUsed: Math.max(0, user.projectsUsed - 1),
-      lastActiveAt: Date.now(),
-    });
-
-    return { success: true };
   },
 });

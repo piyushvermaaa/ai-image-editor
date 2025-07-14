@@ -1,5 +1,7 @@
 import { Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { useConvexMutation } from "@/hooks/use-convex-query";
 import { api } from "@/convex/_generated/api";
@@ -31,19 +33,15 @@ export default function ProjectCard({ project, onEdit }) {
   };
 
   return (
-    <div className="group relative bg-slate-800/50 rounded-xl border border-white/10 overflow-hidden hover:border-white/20 transition-all hover:transform hover:scale-[1.02]">
+    <Card className="py-0 group relative bg-slate-800/50 overflow-hidden hover:border-white/20 transition-all hover:transform hover:scale-[1.02]">
       {/* Thumbnail */}
       <div className="aspect-video bg-slate-700 relative overflow-hidden">
-        {project.thumbnailUrl ? (
+        {project.thumbnailUrl && (
           <img
             src={project.thumbnailUrl}
             alt={project.title}
             className="w-full h-full object-cover"
           />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="text-white/30 text-4xl">🎨</div>
-          </div>
         )}
 
         {/* Hover Actions */}
@@ -66,18 +64,21 @@ export default function ProjectCard({ project, onEdit }) {
       </div>
 
       {/* Project Info */}
-      <div className="p-4">
+      <CardContent className="pb-6">
         <h3 className="font-semibold text-white mb-1 truncate">
           {project.title}
         </h3>
 
         <div className="flex items-center justify-between text-sm text-white/70">
           <span>Updated {lastUpdated}</span>
-          <span className="text-xs bg-slate-700 px-2 py-1 rounded">
+          <Badge
+            variant="secondary"
+            className="text-xs bg-slate-700 text-white/70"
+          >
             {project.width} × {project.height}
-          </span>
+          </Badge>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

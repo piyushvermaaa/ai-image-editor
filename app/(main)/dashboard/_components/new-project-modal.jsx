@@ -3,6 +3,17 @@
 import React, { useState, useCallback } from "react";
 import { X, Upload, Image as ImageIcon, Loader2, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { useDropzone } from "react-dropzone";
 import { useConvexMutation, useConvexQuery } from "@/hooks/use-convex-query";
 import { usePlanAccess } from "@/hooks/use-plan-access";
@@ -115,60 +126,44 @@ export function NewProjectModal({ isOpen, onClose }) {
     onClose();
   };
 
-  if (!isOpen) return null;
-
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        {/* Backdrop */}
-        <div
-          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-          onClick={handleClose}
-        />
-
-        {/* Modal */}
-        <div className="relative w-full max-w-2xl mx-4 bg-slate-800 rounded-2xl border border-white/10 shadow-2xl">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-white/10">
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-bold text-white">
-                Create New Project
-              </h2>
-              {isFree && (
-                <div className="px-2 py-1 bg-slate-700 rounded text-xs text-white/70">
-                  {currentProjectCount}/3 projects
-                </div>
-              )}
+      <Dialog open={isOpen} onOpenChange={handleClose}>
+        <DialogContent className="max-w-2xl bg-slate-800 border-white/10">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <DialogTitle className="text-2xl font-bold text-white">
+                  Create New Project
+                </DialogTitle>
+                {isFree && (
+                  <Badge
+                    variant="secondary"
+                    className="bg-slate-700 text-white/70"
+                  >
+                    {currentProjectCount}/3 projects
+                  </Badge>
+                )}
+              </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleClose}
-              className="text-white/70 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+          </DialogHeader>
 
-          {/* Content */}
-          <div className="p-6">
+          <div className="space-y-6">
             {/* Project Limit Warning for Free Users */}
             {isFree && currentProjectCount >= 2 && (
-              <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <div className="flex items-center gap-3 mb-2">
-                  <Crown className="h-5 w-5 text-amber-400" />
-                  <h3 className="font-semibold text-amber-400">
+              <Alert className="bg-amber-500/10 border-amber-500/20">
+                <Crown className="h-5 w-5 text-amber-400" />
+                <AlertDescription className="text-amber-300/80">
+                  <div className="font-semibold text-amber-400 mb-1">
                     {currentProjectCount === 2
                       ? "Last Free Project"
                       : "Project Limit Reached"}
-                  </h3>
-                </div>
-                <p className="text-amber-300/80 text-sm">
+                  </div>
                   {currentProjectCount === 2
                     ? "This will be your last free project. Upgrade to Pixxel Pro for unlimited projects."
                     : "Free plan is limited to 3 projects. Upgrade to Pixxel Pro to create more projects."}
-                </p>
-              </div>
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* File Upload Area */}
@@ -219,16 +214,17 @@ export function NewProjectModal({ isOpen, onClose }) {
                 </div>
 
                 {/* Project Title Input */}
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">
+                <div className="space-y-2">
+                  <Label htmlFor="project-title" className="text-white">
                     Project Title
-                  </label>
-                  <input
+                  </Label>
+                  <Input
+                    id="project-title"
                     type="text"
                     value={projectTitle}
                     onChange={(e) => setProjectTitle(e.target.value)}
                     placeholder="Enter project name..."
-                    className="w-full px-4 py-3 bg-slate-700 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                    className="bg-slate-700 border-white/20 text-white placeholder-white/50 focus:border-cyan-400 focus:ring-cyan-400"
                   />
                 </div>
 
@@ -250,8 +246,7 @@ export function NewProjectModal({ isOpen, onClose }) {
             )}
           </div>
 
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-white/10">
+          <DialogFooter className="gap-3">
             <Button
               variant="ghost"
               onClick={handleClose}
@@ -261,35 +256,23 @@ export function NewProjectModal({ isOpen, onClose }) {
               Cancel
             </Button>
 
-            {canCreate ? (
-              <Button
-                onClick={handleCreateProject}
-                disabled={!selectedFile || !projectTitle.trim() || isUploading}
-                variant="primary"
-                className="gap-2"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create Project"
-                )}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => setShowUpgradeModal(true)}
-                variant="transparent"
-                className="gap-2"
-              >
-                <Crown className="h-4 w-4" />
-                Upgrade to Pro
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+            <Button
+              onClick={handleCreateProject}
+              disabled={!selectedFile || !projectTitle.trim() || isUploading}
+              variant="primary"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Project"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Upgrade Modal */}
       <UpgradeModal
