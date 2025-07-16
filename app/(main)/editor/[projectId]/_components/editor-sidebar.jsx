@@ -82,7 +82,9 @@ export function EditorSidebar({ project }) {
       </div>
 
       {/* Sidebar Content */}
-      <div className="flex-1 p-4">{renderToolContent(activeTool, project)}</div>
+      <div className="flex-1 p-4 overflow-y-scroll">
+        {renderToolContent(activeTool, project)}
+      </div>
     </div>
   );
 }
