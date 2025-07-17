@@ -416,7 +416,7 @@ export function BackgroundControls({ project }) {
       </Tabs>
 
       {/* Clear Canvas Background Button - At the bottom */}
-      <div className="pt-4 border-t border-white/10 absolute bottom-0 w-full">
+      <div className="pt-4 border-t border-white/10 bottom-0 w-full">
         <Button
           onClick={handleRemoveBackground}
           className="w-full"
